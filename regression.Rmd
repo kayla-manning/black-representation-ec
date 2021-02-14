@@ -1,0 +1,46 @@
+---
+title: "Electoral Edge and the Median Voter"
+author: Kayla Manning
+output:
+  html_document:
+    df_print: kable
+---
+
+```{r setup}
+
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+
+# loading file where I read in the data and packages
+
+source("data/setup.R")
+
+```
+
+```{r regression}
+
+# experimenting with a regression between gap, further, and 
+
+all_dat %>% 
+  mutate(gap = gap * 1000) %>% 
+  lm(gap ~ prez_edge + edge, data = .) %>% 
+  summary()
+
+all_dat %>% 
+  ggplot(aes(gap)) +
+  geom_histogram()
+
+all_dat %>% 
+  ggplot(aes(year, gap)) +
+  geom_point() +
+  geom_smooth()
+
+all_dat %>% 
+  ggplot(aes(edge, gap)) +
+  geom_point()
+
+```
+
