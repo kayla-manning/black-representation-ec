@@ -3,11 +3,11 @@
 
 Does the Electoral College offer proportional representation for Black voters? This project contains the code and figures used to investigate that question.
 
-### Background
+## Background
 
 Voting and representation rank as two of the most crucial elements of democracy, yet attempts to stifle Black voices and votes haunt the history of the United States. Voters determine leaders and leaders dictate policy, so silencing voters has severe consequences for representation. Although the days of outright voter suppression through mechanisms such as the Grandfather Clause and literacy tests have passed, Donald Trump’s popular vote loss and Electoral College victory in 2016 illustrated that some voters still carry more power than others. The distribution of voters across states determines whose votes carry the most electoral weight, and concentrations of various demographic groups vary across states. Given the nation’s history of voter suppression and the heterogeneity of state-level populations, the Electoral College could very well perpetuate the underrepresentation of historically marginalized groups. 
 
-### Important directories and files
+## Important directories and files
 
 - `analysis.Rmd`: This file contains the code used to produce the figures and the analyses included in the written work. Knitting this document will produce `analysis.html`.
 - `analysis.html`: This file contains the code from `analysis.Rmd` and displays the output.
