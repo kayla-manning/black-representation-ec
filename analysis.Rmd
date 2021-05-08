@@ -28,7 +28,6 @@ knitr::opts_chunk$set(
 
 {
   black_ipums <- read_csv("data/ipums/saved_data/black_ipums.csv")
-  race_counts <- read_csv("data/ipums/saved_data/race_counts.csv")
   evotes <- read_csv("data/ec_votes.csv") %>% 
     pivot_longer(cols = 2:28, names_to = "year", values_to = "votes") %>% 
     rename(state = X1) %>% 
@@ -39,10 +38,24 @@ knitr::opts_chunk$set(
   # merging data for national approach
 
   natl_dat <- inner_join(black_ipums, evotes, by = c("state", "year")) %>% 
-    mutate(ev_pm = votes/ total_vap * 10^6,
+    mutate(ev_pm = votes / total_vap * 10^6,
            black_pct_vap = black_prop_vap * 100) %>% 
     drop_na(state) %>% 
     ungroup()
+  
+  # the calculations are off for 2004 and ev_pm, so I am replacing those with
+  # 2008 figures since they likely do not differ
+  
+  for (i in 1:nrow(natl_dat)) {
+    row <- natl_dat %>% 
+      slice(i)
+    if (row$year == 2004) {
+      natl_dat[i, 7] <- natl_dat %>% 
+        filter(year == 2008, state == row$state) %>% 
+        pull(ev_pm)
+    }
+  }
+  
 }
 
 # preparing a theme
@@ -83,16 +96,16 @@ knitr::opts_chunk$set(
 
 natl_dat %>% 
   mutate(year = as_factor(year)) %>% 
-  ggplot(aes(log(black_prop_vap), ev_pm)) +
+  ggplot(aes(log(black_pct_vap), ev_pm)) +
   geom_point() +
   facet_wrap(~year, scales = "free") +
   geom_point() +
   geom_smooth(method = "lm", se = 0,
               color = monochrome[2]) +
   theme_hodp() +
-  labs(title = "Electoral votes per million decrease as the logged \nBlack proportion of the VAP increases",
+  labs(title = "Electoral votes per million decrease as the logged \nBlack percentage of the VAP increases",
        y = "Electoral votes per million members of VAP",
-       x = "Log of the Black proportion of the voting-age population")
+       x = "log(Black percentage of the VAP)")
 
 ggsave("figures/exploratory_reg.png", width = 10, height = 5)
 
@@ -117,23 +130,24 @@ natl_dat %>%
 # writing a loop so I can create all of these regressions & put them in a nice
 # stargazer table
 
-years <- c(1980, seq(2000, 2016, by = 4))
+years <- c(seq(1976, 2016, by = 4))
 
 for (y in years) {
   mod <- natl_dat %>% 
     filter(year == y) %>% 
-    lm(ev_pm ~ log(black_prop_vap),
+    lm(ev_pm ~ log(black_pct_vap),
        data = .)
   assign(paste0("mod_", y), mod)
 }
 
-stargazer(mod_1980, mod_2000, mod_2004,
-          mod_2008, mod_2012, mod_2016,
+stargazer(mod_1976, mod_1980, mod_1984,
+          mod_1988, mod_1992, mod_1996, mod_2000, 
+          mod_2004, mod_2008, mod_2012, mod_2016,
           type = "html", out = "figures/main_lm.html",
           omit.stat = c("f", "LL", "ser"),
-          column.labels = c("1980", as.character(seq(2000, 2016, by = 4))),
+          column.labels = c(as.character(seq(1976, 2016, by = 4))),
           dep.var.labels = "Electoral votes per million",
-          covariate.labels = "log(Black proportion of VAP)",
+          covariate.labels = "log(Black percentage of VAP)",
           title = "Table 1: National Approach")
 
 ```
@@ -162,7 +176,7 @@ do_bg_test <- function(bg_def) {
     summarise(total = sum(total_vap),
               black = sum(black),
               .groups = "drop") %>% 
-    mutate(pct_black = black / total) %>% 
+    mutate(pct_black = black / total * 100) %>% 
     select(-c(total, black)) %>% 
     drop_na(bg) %>% 
     ungroup() %>% 
@@ -177,7 +191,7 @@ do_bg_test <- function(bg_def) {
 
 # doing just 5% for the main analysis
 
-bg_test <- do_bg_test(5) %>% 
+do_bg_test(5) %>% 
   tidy() %>% 
   mutate(across(where(is.numeric), function(x){round(x, 3)})) %>% 
   mutate(across(everything(), as.character)) %>% 
@@ -185,18 +199,19 @@ bg_test <- do_bg_test(5) %>%
   mutate(stat = as_factor(stat),
          stat = fct_relevel(stat, "alternative")) %>% 
   arrange(stat) %>% 
-  filter(!stat %in% c("conf.high", "conf.low", "method",
-                      "parameter")) %>% 
+  filter(!stat %in% c("conf.high", "conf.low", "method")) %>% 
   mutate(stat = recode(stat,
-                       "alternative" = "Alternative",
-                       "estimate" = "Estimate",
+                       "alternative" = "Alternative hypothesis",
+                       "estimate" = "Estimated difference",
                        "p.value" = "p-value",
-                       "statistic" = "Test statistic"),
+                       "statistic" = "Test statistic",
+                       "parameter" = "Degrees of freedom"),
          value = recode(value, "greater" = "Greater")) %>% 
   kbl(col.names = c("", ""),
-      caption = "<center><b>Paired t-test</b></center>") %>% 
+      caption = "<center><b>Paired t-test for difference in the Black percentage of the VAP</b></center>") %>% 
   kable_classic_2(html_font = "Times New Roman",
-                full_width = FALSE)
+                full_width = FALSE) %>% 
+  save_kable("figures/bg_test.html")
 
 ```
 
@@ -208,22 +223,22 @@ bg_test <- do_bg_test(5) %>%
   # creating histograms of logged and non-logged black data
 
   plain_prop <- natl_dat %>% 
-    ggplot(aes(black_prop_vap)) +
+    ggplot(aes(black_pct_vap)) +
     geom_histogram(fill = primary[4]) +
     theme_hodp() +
-    labs(x = "Black proportion of the voting-age population",
+    labs(x = "Black percentage of the voting-age population",
          y = "Count")
   
   log_prop <- natl_dat %>% 
-    mutate(logged = log(black_prop_vap)) %>%
+    mutate(logged = log(black_pct_vap)) %>%
     ggplot(aes(logged)) +
     geom_histogram(fill = primary[4]) +
     theme_hodp() +
-    labs(x = "log(Black proportion of the voting-age population)",
+    labs(x = "log(Black percentage of the voting-age population)",
          y = "")
   
   ggarrange(plain_prop, log_prop) %>% 
-    annotate_figure(top = text_grob("Taking the natural log of the Black proportion of the voting-age \npopulation normalizes the distribution",
+    annotate_figure(top = text_grob("Taking the natural log of the Black percentage of the voting-age \npopulation normalizes the distribution",
                                     family = "Times New Roman",
                                     face = "bold",
                                     size = 14))
@@ -236,27 +251,25 @@ bg_test <- do_bg_test(5) %>%
 {
   log_all <- natl_dat %>% 
   mutate(year = as_factor(year)) %>% 
-  ggplot(aes(log(black_prop_vap), ev_pm)) +
-  geom_point() +
-  geom_point() +
+  ggplot(aes(log(black_pct_vap), ev_pm)) +
+  geom_jitter() +
   geom_smooth(method = "lm", se = 0,
               color = monochrome[2]) +
   theme_hodp() +
   labs(title = "",
        y = "",
-       x = "log(Black proportion of the VAP)")
+       x = "log(Black percentage of the VAP)")
 
 non_log_all <- natl_dat %>% 
   mutate(year = as_factor(year)) %>% 
-  ggplot(aes(black_prop_vap, ev_pm)) +
-  geom_point() +
-  geom_point() +
+  ggplot(aes(black_pct_vap, ev_pm)) +
+  geom_jitter() +
   geom_smooth(method = "lm", se = 0,
               color = monochrome[2]) +
   theme_hodp() +
   labs(title = "",
        y = "",
-       x = "Black proportion of the VAP")
+       x = "Black percentage of the VAP")
 
 ggarrange(non_log_all, log_all,
           nrow = 2) %>% 
@@ -264,17 +277,17 @@ ggarrange(non_log_all, log_all,
                                    rot = 90,
                                    family = "Times New Roman",
                                    face = "bold"),
-                  top = text_grob("Taking the natural log of the Black proportion of the VAP linearizes the relationship",
+                  top = text_grob("Taking the natural log of the Black percentage of the VAP linearizes the relationship",
                                   family = "Times New Roman",
                                   face = "bold",
                                   size = 14))
 
-ggsave("figures/log_linear.png", width = 12, height = 4)
+ggsave("figures/log_linear.png", width = 10, height = 5)
 }
 
 ```
 
-```{r mm}
+```{r lm_rob}
 
 # running same regression as above in the national approach, but using a robust
 # MM regression as done in Blake's paper
@@ -282,33 +295,34 @@ ggsave("figures/log_linear.png", width = 12, height = 4)
 natl_dat %>% 
   group_by(year) %>% 
   nest() %>% 
-  mutate(mod = map(data, ~ lmrob(ev_pm~ log(black_prop_vap), 
+  mutate(mod = map(data, ~ lmrob(ev_pm~ log(black_pct_vap), 
                                  data = ., method = "MM")),
          tidied = map(mod, ~tidy(.))) %>% 
   unnest(tidied) %>% 
   select(year, term, estimate, p.value) %>% 
-  filter(term == "log(black_prop_vap)") %>% 
+  filter(term == "log(black_pct_vap)") %>% 
   arrange(year)
 
 # writing a loop so I can create all of these regressions & put them in a nice stargazer table
 
-years <- c(1980, seq(2000, 2016, by = 4))
+years <- c(seq(1976, 2016, by = 4))
 
 for (y in years) {
   mod <- natl_dat %>% 
     filter(year == y) %>% 
-    lmrob(ev_pm ~ log(black_prop_vap),
+    lmrob(ev_pm ~ log(black_pct_vap),
        data = ., method = "MM")
   assign(paste0("mod_", y), mod)
 }
 
-stargazer(mod_1980, mod_2000, mod_2004,
-          mod_2008, mod_2012, mod_2016,
+stargazer(mod_1976, mod_1980, mod_1984,
+          mod_1988, mod_1992, mod_1996, mod_2000, 
+          mod_2004, mod_2008, mod_2012, mod_2016,
           type = "html", out = "figures/mm_lmrob.html",
           omit.stat = c("f", "LL", "ser"),
-          column.labels = c("1980", as.character(seq(2000, 2016, by = 4))),
+          column.labels = c(as.character(seq(1976, 2016, by = 4))),
           dep.var.labels = "Electoral votes per million",
-          covariate.labels = "log(Black proportion of VAP)",
+          covariate.labels = "log(Black percentage of VAP)",
           title = "Table 2: National Approach with Robust Regression")
 
 ```   
@@ -318,13 +332,13 @@ stargazer(mod_1980, mod_2000, mod_2004,
 # running regression with the election year as fixed effects
 
 year_fe <- natl_dat %>% 
-    lm(ev_pm ~ log(black_prop_vap) + year,
+    lm(ev_pm ~ log(black_pct_vap) + year,
        data = .)
 
 # doing same thing but with state and year
 
 state_year_fe <- natl_dat %>% 
-    lm(ev_pm ~ log(black_prop_vap) + year + state,
+    lm(ev_pm ~ log(black_pct_vap) + year + state,
        data = .)
 
 # displaying in stargazer, but don't want state terms
@@ -338,64 +352,13 @@ stargazer(year_fe, state_year_fe,
           type = "html",
           omit = omit_states,
           omit.stat = c("f", "LL", "ser"),
-          covariate.labels = c("log(Black proportion of VAP)",
+          covariate.labels = c("log(Black percentage of VAP)",
                                "Year"),
           add.lines = list(c("Year fixed effects", rep("Yes", 2)),
                            c("State fixed effects", "No", "Yes")),
           dep.var.labels = "Electoral votes per million",
           title = "Table 3: National Approach with Fixed Effects for State and Year",
           out = "figures/fe_lm.html")
-
-```
-
-```{r appendix_regressions}
-
-# replicating the analysis from above, but for every race
-
-all_races_props <- race_counts %>% 
-  mutate(state = state.abb[match(state, state.name)]) %>% 
-  drop_na(state) %>% 
-  group_by(year, state) %>% 
-  inner_join(evotes, by = c("state", "year")) %>% 
-  mutate(total_vap = sum(n),
-         prop_vap = n / total_vap,
-         ev_pm = votes / total_vap * 10^6) %>% 
-  ungroup() %>% 
-  select(year, state, race, prop_vap, ev_pm) %>% 
-  pivot_wider(names_from = race, values_from = prop_vap) %>% 
-  clean_names()
-
-# copying code from regression & adding terms that I might find interesting...
-# added control term for white
-
-all_races_props %>% 
-  group_by(year) %>% 
-  nest() %>% 
-  mutate(mod = map(data, ~ lm(ev_pm ~ white + log(black_african_american_negro), data = .)),
-         tidied = map(mod, ~tidy(.))) %>% 
-  unnest(tidied) %>% 
-  select(-c(data, mod)) %>% 
-  filter(term %in% c("log(black_african_american_negro)", "white")) %>% 
-  mutate(change_w_1pct_increase = estimate / 100) %>% 
-  arrange(year)
-
-# will try for AAPI... almost always significant, with negative coefficients
-
-all_races_props %>% 
-  mutate(asian = chinese + japanese + other_asian_or_pacific_islander) %>% 
-  group_by(year) %>% 
-  nest() %>% 
-  mutate(mod = map(data, ~ lm(ev_pm ~ log(asian), data = .)),
-         tidied = map(mod, ~tidy(.))) %>% 
-  unnest(tidied) %>% 
-  select(-c(data, mod)) %>% 
-  filter(term == "log(asian)") %>% 
-  mutate(change_w_1pct_increase = estimate / 100) %>% 
-  arrange(year)
-
-# election year fixed effects
-
-# control terms
 
 ```
 
@@ -406,13 +369,57 @@ all_races_props %>%
 # appears to be greater at the extreme, but not at the fine line between
 # battleground and non-battleground
 
-tibble(def = c(1, 5, 10, 15, 17, 20)) %>% 
+tibble(def = c(1, 5, 10, 20, 30)) %>% 
   mutate(estimate = round(map_dbl(def, ~do_bg_test(.)$estimate), 3),
          pval = round(map_dbl(def, ~do_bg_test(.)$p.value), 3)) %>% 
   kbl(col.names = c("Battleground Cut-off", "Difference in Black VAP share", "p-value"),
       caption = "<center><b>Battleground Sensitivity Analysis</b></center>") %>% 
   row_spec(0, bold = TRUE) %>% 
   kable_classic_2(html_font = "Times New Roman",
-                  full_width = FALSE)
+                  full_width = FALSE) %>% 
+  save_kable("figures/bg_sensitivity.html")
 
 ```
+
+```{r bg_values}
+
+# creating a table to show the differences for each election year (will include in appendix)
+
+inner_join(black_ipums, results, by = c("state" = "state_po", "year"))  %>% 
+    filter(party_detailed %in% c("REPUBLICAN", "DEMOCRAT")) %>% 
+    group_by(state, year) %>% 
+    mutate(tv2p = sum(candidatevotes),
+           pv2p = candidatevotes / tv2p * 100) %>% 
+    select(year, state, black, total_vap, party_simplified, pv2p) %>% 
+    group_by(state, year, party_simplified, black, total_vap) %>% 
+    summarise(pv2p = sum(pv2p),
+              .groups = "drop") %>% 
+    ungroup() %>% 
+    pivot_wider(names_from = party_simplified, values_from = pv2p) %>% 
+    mutate(bg = abs(DEMOCRAT - REPUBLICAN) < 5) %>% 
+    select(-c(state, DEMOCRAT, REPUBLICAN)) %>% 
+    group_by(bg, year) %>% 
+    summarise(total = sum(total_vap),
+              black = sum(black),
+              .groups = "drop") %>% 
+    mutate(pct_black = black / total * 100) %>% 
+    select(-c(total, black)) %>% 
+    drop_na(bg) %>% 
+    ungroup() %>% 
+    pivot_wider(names_from = bg, values_from = pct_black) %>% 
+    rename(bg = `TRUE`, 
+           nonbg = `FALSE`) %>% 
+  select(year, bg, nonbg) %>% 
+  mutate(Difference = round(bg - nonbg, 3),
+         bg = round(bg, 3),
+         nonbg = round(nonbg, 3)) %>% 
+  rename("Year" = year,
+         "Battleground" = bg,
+         "Non-battleground" = nonbg) %>% 
+  kbl(caption = "<center><b>Differences in Black percentage of the VAP</b></center>") %>% 
+  kable_classic_2(html_font = "Times New Roman",
+                full_width = FALSE) %>% 
+  save_kable("figures/bg_diffs.html")
+
+```
+
