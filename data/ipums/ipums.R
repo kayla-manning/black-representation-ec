@@ -1,3 +1,16 @@
+
+# this file will not run because the original data was too large to include in
+# this repository (I have already used up my free GitHub LFS space). I just kept
+# this file here to give a sense of the process I went through to create the
+# data used for this analysis
+
+# if you wish to have the original files, email me at
+# kaylamanning@college.harvard.edu and I can send them directly to you
+
+################################################################################
+######## CODE TO READ IN THE IPUMS DATA...
+################################################################################
+
 # NOTE: To load data, you must download both the extract's data and the DDI
 # and also set the working directory to the folder with these files (or change the path below).
 
@@ -6,7 +19,11 @@
 # ddi <- read_ipums_ddi("data/ipums/usa_00008.xml")
 # data <- read_ipums_micro(ddi)
 
-# getting ready to clean the data
+################################################################################
+######## BASIC CLEANING
+################################################################################
+
+# getting ready to prep the data
 
 {
   library(maps)
@@ -35,6 +52,10 @@ old_race_counts <- data %>%
   mutate(n = case_when(year %in% c(1980, 1990, 2000) ~ n / 10 * 100,
                        TRUE ~ n * 100))
 
+################################################################################
+######## LINEAR INTERPOLATION
+################################################################################
+
 {
   # inferring data points for years not in the IPUMS data... race coding is
   # different starting at the turn of the century, so I have to store vectors for
@@ -60,6 +81,10 @@ old_race_counts <- data %>%
     arrange(state, race, year) %>% 
     mutate(n = na.approx(n))
 }
+
+################################################################################
+######## GETTING BLACK PROPORTIONS & GENERAL HOUSEKEEPING
+################################################################################
 
 # dropping NA state values (which is just DC) & creating my black proportion
 # columns for the main analysis
@@ -97,6 +122,11 @@ black_ipums <- race_counts %>%
     drop_na(state)
 }
 
+################################################################################
+######## REPLACING ESTIMATED TOTAL VAP COUNTS WITH ACTUAL COUNTS FROM US
+######## ELECTIONS PROJECT
+################################################################################
+
 # using this data for 1980-2014
 
 dat <- googlesheets4::read_sheet("https://docs.google.com/spreadsheets/d/1or-N33CpOZYQ1UfZo0h8yGPSyz0Db-xjmZOXg3VJi-Q/edit#gid=1670431880") %>% 
@@ -130,6 +160,10 @@ for (i in 1:nrow(black_ipums)) {
     black_ipums[i,]$black <- black_ipums[i,]$black_prop_vap * black_ipums[i,]$total_vap
   }
 }
+
+################################################################################
+######## THE END :)
+################################################################################
 
 # saving the data I use as CSV files so that I don't have to rerun this script
 # (it takes a long time)

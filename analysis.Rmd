@@ -12,22 +12,26 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 
-# loading packages and data
+# installing packages if necessary
 
 {
-  library(tidyverse)
-  library(broom)
-  library(robustbase)
-  library(stargazer)
-  library(ggpubr)
-  library(kableExtra)
-  library(janitor)
+  my_packages <- c("tidyverse", "broom", "robustbase",
+                   "stargazer", "ggpubr", "kableExtra",
+                   "janitor")
+  new_packages <- my_packages[!(my_packages %in% installed.packages()[,"Package"])]
+  if (length(new_packages)) install.packages(new_packages)
+}
+
+# loading all of the libraries in with this loop
+
+for (package in my_packages) {
+  eval(bquote(library(.(package))))
 }
 
 # data prep
 
 {
-  black_ipums <- read_csv("data/ipums/saved_data/black_ipums.csv")
+  black_ipums <- read_csv("data/ipums/black_ipums.csv")
   evotes <- read_csv("data/ec_votes.csv") %>% 
     pivot_longer(cols = 2:28, names_to = "year", values_to = "votes") %>% 
     rename(state = X1) %>% 
@@ -113,22 +117,8 @@ ggsave("figures/exploratory_reg.png", width = 10, height = 5)
 
 ```{r natl_approach_reg}
 
-# running simple regression for each year... insignificant but is negative
-
-natl_dat %>% 
-  group_by(year) %>% 
-  nest() %>% 
-  mutate(mod = map(data, ~ lm(ev_pm ~ log(black_pct_vap), data = .)),
-         tidied = map(mod, ~tidy(.))) %>% 
-  unnest(tidied) %>% 
-  select(-c(data, mod)) %>% 
-  filter(term == "log(black_pct_vap)") %>% 
-  mutate(change_w_1pct_increase = estimate / 100) %>% 
-  arrange(year)
-
-
-# writing a loop so I can create all of these regressions & put them in a nice
-# stargazer table
+# writing a loop so I can create all of the regressions for the National
+# Approach (one for each year) & put them in a nice stargazer table
 
 years <- c(seq(1976, 2016, by = 4))
 
@@ -139,6 +129,8 @@ for (y in years) {
        data = .)
   assign(paste0("mod_", y), mod)
 }
+
+# displaying the results & saving as an html file to include in my word doc
 
 stargazer(mod_1976, mod_1980, mod_1984,
           mod_1988, mod_1992, mod_1996, mod_2000, 
@@ -156,7 +148,8 @@ stargazer(mod_1976, mod_1980, mod_1984,
 
 ```{r bg_approach}
 
-# creating a function so I can easily do this for multiple thresholds
+# creating a function so I can prepare the data & run the t-test for multiple
+# thresholds... only need 5% for the main analysis, but this will come in handy
 
 do_bg_test <- function(bg_def) {
   dat <- inner_join(black_ipums, results, by = c("state" = "state_po", "year"))  %>% 
@@ -189,7 +182,8 @@ do_bg_test <- function(bg_def) {
   t.test(dat$bg, dat$nonbg, paired = TRUE, alternative = "greater")
 }
 
-# doing just 5% for the main analysis
+# doing just 5% for the main analysis... called the function I wrote & then
+# displaying it in a nice html kable to use in the word document
 
 do_bg_test(5) %>% 
   tidy() %>% 
@@ -220,7 +214,7 @@ do_bg_test(5) %>%
 ```{r log_plots}
 
 {
-  # creating histograms of logged and non-logged black data
+  # creating histograms of logged and non-logged black data to display the skewness
 
   plain_prop <- natl_dat %>% 
     ggplot(aes(black_pct_vap)) +
@@ -237,6 +231,9 @@ do_bg_test(5) %>%
     labs(x = "log(Black percentage of the voting-age population)",
          y = "")
   
+  # printing the histograms out together & saving as a single image so I can
+  # display them side-by-side in the appendix
+  
   ggarrange(plain_prop, log_prop) %>% 
     annotate_figure(top = text_grob("Taking the natural log of the Black percentage of the voting-age \npopulation normalizes the distribution",
                                     family = "Times New Roman",
@@ -246,7 +243,7 @@ do_bg_test(5) %>%
   ggsave("figures/log_prop_black.png", width = 10, height = 5)
 }
 
-# illustrating linear relationship of same thing
+# illustrating linear relationship of same thing (logged vs non-logged data)
 
 {
   log_all <- natl_dat %>% 
@@ -259,30 +256,32 @@ do_bg_test(5) %>%
   labs(title = "",
        y = "",
        x = "log(Black percentage of the VAP)")
+  
+  non_log_all <- natl_dat %>% 
+    mutate(year = as_factor(year)) %>% 
+    ggplot(aes(black_pct_vap, ev_pm)) +
+    geom_jitter() +
+    geom_smooth(method = "lm", se = 0,
+                color = monochrome[2]) +
+    theme_hodp() +
+    labs(title = "",
+         y = "",
+         x = "Black percentage of the VAP")
 
-non_log_all <- natl_dat %>% 
-  mutate(year = as_factor(year)) %>% 
-  ggplot(aes(black_pct_vap, ev_pm)) +
-  geom_jitter() +
-  geom_smooth(method = "lm", se = 0,
-              color = monochrome[2]) +
-  theme_hodp() +
-  labs(title = "",
-       y = "",
-       x = "Black percentage of the VAP")
-
-ggarrange(non_log_all, log_all,
-          nrow = 2) %>% 
-  annotate_figure(left = text_grob("Electoral votes per million members of VAP",
-                                   rot = 90,
-                                   family = "Times New Roman",
-                                   face = "bold"),
-                  top = text_grob("Taking the natural log of the Black percentage of the VAP linearizes the relationship",
-                                  family = "Times New Roman",
-                                  face = "bold",
-                                  size = 14))
-
-ggsave("figures/log_linear.png", width = 10, height = 5)
+  # again, printing out and saving
+  
+  ggarrange(non_log_all, log_all,
+            nrow = 2) %>% 
+    annotate_figure(left = text_grob("Electoral votes per million members of VAP",
+                                     rot = 90,
+                                     family = "Times New Roman",
+                                     face = "bold"),
+                    top = text_grob("Taking the natural log of the Black percentage of the VAP linearizes the relationship",
+                                    family = "Times New Roman",
+                                    face = "bold",
+                                    size = 14))
+  
+  ggsave("figures/log_linear.png", width = 10, height = 5)
 }
 
 ```
@@ -315,6 +314,9 @@ for (y in years) {
   assign(paste0("mod_", y), mod)
 }
 
+# diplaying results in a table & saving as an html so I can include it in the
+# final report document
+
 stargazer(mod_1976, mod_1980, mod_1984,
           mod_1988, mod_1992, mod_1996, mod_2000, 
           mod_2004, mod_2008, mod_2012, mod_2016,
@@ -341,12 +343,15 @@ state_year_fe <- natl_dat %>%
     lm(ev_pm ~ log(black_pct_vap) + year + state,
        data = .)
 
-# displaying in stargazer, but don't want state terms
+# don't want state terms in my stargazer because it will crowd out the table, so
+# I am creating a vector of variable names to exclude from the model output
 
 omit_states <- state_year_fe %>% 
   tidy() %>% 
   filter(str_detect(term, "^state")) %>% 
   pull(term)
+
+# displaying the models together & excluding the state names
 
 stargazer(year_fe, state_year_fe, 
           type = "html",
@@ -364,10 +369,9 @@ stargazer(year_fe, state_year_fe,
 
 ```{r bg_cutoffs}
 
-# testing different cutoffs for battleground approach, using function defined above
-
-# appears to be greater at the extreme, but not at the fine line between
-# battleground and non-battleground
+# testing different cutoffs for battleground approach, using function defined
+# above... don't have significant results at any reasonable (or unreasonable)
+# battleground threshold
 
 tibble(def = c(1, 5, 10, 20, 30)) %>% 
   mutate(estimate = round(map_dbl(def, ~do_bg_test(.)$estimate), 3),
@@ -383,7 +387,9 @@ tibble(def = c(1, 5, 10, 20, 30)) %>%
 
 ```{r bg_values}
 
-# creating a table to show the differences for each election year (will include in appendix)
+# creating a table to show the difference in Black pct of VAP in battleground vs
+# non-battleground for each election year (this is an intermediary result in the
+# battleground approach but not displayed in the original t-test output)
 
 inner_join(black_ipums, results, by = c("state" = "state_po", "year"))  %>% 
     filter(party_detailed %in% c("REPUBLICAN", "DEMOCRAT")) %>% 
