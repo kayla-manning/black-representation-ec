@@ -1,6 +1,8 @@
 # Representation of Black Voters in the Electoral College
 ### Kayla Manning, Spring 2021
 
+\bigskip
+
 Does the Electoral College offer proportional representation for Black voters?
 
 ## Background
