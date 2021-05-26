@@ -9,7 +9,7 @@ This raises the question, does the Electoral College offer proportional represen
 
 ## Important directories and files
 
-- [final_report.docx](final_report.docx): This word document has the written report and the figures produced in the analysis file. If you only look at one file in this repository, this should be it.
+- [final_report](final_report): This directory contains [final_report.pdf](final_report/final_report.pdf) and [final_report.docx](final_report/final_report.docx). Both of these files contain the same written report in either Word or PDF form. If you only look at one file in this project, it should be your preferred file type of the final report.
 - [analysis.Rmd](analysis.Rmd): This file contains the code used to produce the figures and the analyses included in the report. If you wish to see the code and the output in a single, static document, you can clone this repository and knit this file to produce an HTML document.
 - [data](data): This directory contains the data used in this analysis.
   + [ec_votes.csv](data/ec_votes.csv): This file, compiled with data from the Office of the Federal Register, contains the allocation of electoral votes in presidential elections from 1944-2020.
